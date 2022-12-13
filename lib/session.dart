@@ -1,3 +1,5 @@
+// ignore_for_file: always_specify_types
+
 import 'dart:async';
 
 import 'device.dart';
@@ -10,11 +12,16 @@ enum CastSessionState {
 }
 
 class CastSession {
-  static const kNamespaceConnection = 'urn:x-cast:com.google.cast.tp.connection';
-  static const kNamespaceHeartbeat = 'urn:x-cast:com.google.cast.tp.heartbeat';
-  static const kNamespaceReceiver = 'urn:x-cast:com.google.cast.receiver';
-  static const kNamespaceDeviceauth = 'urn:x-cast:com.google.cast.tp.deviceauth';
-  static const kNamespaceMedia = 'urn:x-cast:com.google.cast.media';
+  CastSession._(this.sessionId, this._socket);
+  static const String kNamespaceConnection =
+      'urn:x-cast:com.google.cast.tp.connection';
+  static const String kNamespaceHeartbeat =
+      'urn:x-cast:com.google.cast.tp.heartbeat';
+  static const String kNamespaceReceiver =
+      'urn:x-cast:com.google.cast.receiver';
+  static const String kNamespaceDeviceauth =
+      'urn:x-cast:com.google.cast.tp.deviceauth';
+  static const String kNamespaceMedia = 'urn:x-cast:com.google.cast.media';
 
   final String sessionId;
   CastSocket get socket => _socket;
@@ -27,23 +34,27 @@ class CastSession {
   CastSessionState _state = CastSessionState.connecting;
   String? _transportId;
 
-  final _stateController = StreamController<CastSessionState>.broadcast();
-  final _messageController = StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<CastSessionState> _stateController =
+      StreamController<CastSessionState>.broadcast();
+  final StreamController<Map<String, dynamic>> _messageController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
-  CastSession._(this.sessionId, this._socket);
-
-  static Future<CastSession> connect(String sessionId, CastDevice device, [Duration? timeout]) async {
-    final _socket = await CastSocket.connect(
+  static Future<CastSession> connect(
+    String sessionId,
+    CastDevice device, [
+    Duration? timeout,
+  ]) async {
+    final CastSocket socket = await CastSocket.connect(
       device.host,
       device.port,
       timeout,
     );
 
-    final session = CastSession._(sessionId, _socket);
+    final CastSession session = CastSession._(sessionId, socket);
 
     session._startListening();
 
-    session.sendMessage(kNamespaceConnection, {
+    session.sendMessage(kNamespaceConnection, <String, dynamic>{
       'type': 'CONNECT',
     });
 
@@ -52,7 +63,7 @@ class CastSession {
 
   Future<dynamic> close() async {
     if (!_messageController.isClosed) {
-      sendMessage(kNamespaceConnection, {
+      sendMessage(kNamespaceConnection, <String, dynamic>{
         'type': 'CLOSE',
       });
       try {
@@ -64,33 +75,41 @@ class CastSession {
   }
 
   void _startListening() {
-    _socket.stream.listen((message) {
-      // happen
-      if (_messageController.isClosed) {
-        return;
-      }
+    _socket.stream.listen(
+      (CastSocketMessage message) {
+        // happen
+        if (_messageController.isClosed) {
+          return;
+        }
 
-      if (message.namespace == kNamespaceHeartbeat && message.payload['type'] == 'PING') {
-        sendMessage(kNamespaceHeartbeat, {
-          'type': 'PONG',
-        });
-      } else if (message.namespace == kNamespaceConnection && message.payload['type'] == 'CLOSE') {
-        close();
-      } else if (message.namespace == kNamespaceReceiver && message.payload['type'] == 'RECEIVER_STATUS') {
-        _handleReceiverStatus(message.payload);
-        _messageController.add(message.payload);
-      } else {
-        _messageController.add(message.payload);
-      }
-    }, onError: (error) {
-      _messageController.addError(error);
-    }, onDone: () {
-      _messageController.close();
+        if (message.namespace == kNamespaceHeartbeat &&
+            message.payload['type'] == 'PING') {
+          sendMessage(kNamespaceHeartbeat, <String, dynamic>{
+            'type': 'PONG',
+          });
+        } else if (message.namespace == kNamespaceConnection &&
+            message.payload['type'] == 'CLOSE') {
+          close();
+        } else if (message.namespace == kNamespaceReceiver &&
+            message.payload['type'] == 'RECEIVER_STATUS') {
+          _handleReceiverStatus(message.payload);
+          _messageController.add(message.payload);
+        } else {
+          _messageController.add(message.payload);
+        }
+      },
+      onError: (Object error) {
+        _messageController.addError(error);
+      },
+      onDone: () {
+        _messageController.close();
 
-      _state = CastSessionState.closed;
-      _stateController.add(_state);
-      _stateController.close();
-    }, cancelOnError: false);
+        _state = CastSessionState.closed;
+        _stateController.add(_state);
+        _stateController.close();
+      },
+      cancelOnError: false,
+    );
   }
 
   void _handleReceiverStatus(Map<String, dynamic> payload) {
@@ -99,10 +118,11 @@ class CastSession {
     }
 
     if (payload['status']?.containsKey('applications') == true) {
-      _transportId = payload['status']['applications'][0]['transportId'];
+      _transportId =
+          payload['status']['applications'][0]['transportId'] as String?;
 
       // reconnect with new _transportId
-      sendMessage(kNamespaceConnection, {
+      sendMessage(kNamespaceConnection, <String, dynamic>{
         'type': 'CONNECT',
       });
 
